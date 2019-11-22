@@ -13,7 +13,6 @@ LINK	:= -lpthread
 
 # Source files
 SRC 	:= $(wildcard src/*.cpp)
-SRC 	+= $(wildcard *.cpp)
 
 # Object files
 OBJ		:= $(subst .cpp,.o,$(SRC))
@@ -26,10 +25,6 @@ ttetris: $(OBJ)
 	
 .SECONDARY: $(OBJS)
 obj/%.o: src/%.cpp inc/%.h
-	@echo "CXX $(notdir $<)"
-	@$(CXX) $(FLAGS) $(INC) -c $< -o $@
-
-obj/%.o: %.cpp
 	@echo "CXX $(notdir $<)"
 	@$(CXX) $(FLAGS) $(INC) -c $< -o $@
 

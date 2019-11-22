@@ -28,6 +28,8 @@ public:
     std::string light;
     std::string blank;
 
+    std::vector<std::string> colors;
+
     void push_back(Relement e);
     std::string to_string();
     //void clear();
@@ -47,9 +49,19 @@ public:
     bool operator==(const Coor& in);
 };
 
+class BoardSquare{
+public:
+    Coor coor;
+    std::string color;
+    BoardSquare();
+    BoardSquare(Coor);
+    BoardSquare(Coor, std::string);
+};
+
 class Shape{
 public:
     int idx;
+    std::string color;
     Coor origin;
     std::vector<Coor> squares;
 
@@ -63,22 +75,23 @@ public:
     void left();
     void right();
 
-    bool check_collision(std::vector<Coor> board);
+    bool check_collision(std::vector<BoardSquare> board);
 };
 
 // Game class 
 class Game{
 public:
+    enum GAMESTATE{ play, pause, help, begin };
 
     // Game parameters 
     std::thread t_game;
     unsigned int WIDTH;
     unsigned int HEIGHT;
     bool running;
+    GAMESTATE gs;
 
     // Rendering
     Rvector rvector;
-    std::vector<std::string> colors;
 
     void draw_blank_board();
     void draw_box(int, int, int, int);
@@ -88,6 +101,7 @@ public:
     void draw_next_box();
     void draw_saved_box();
     void draw_counter_boxes();
+    void draw_pause();
     std::string render();
 
 
@@ -110,19 +124,22 @@ public:
     Shape *next;
     Shape *saved;
 
-    std::vector<Coor> board;
+    std::vector<BoardSquare> board;
 
     int level;
     int lines;
     int score;
 
     double game_speed;
+    double tick;
 
     // Gameplay functions
     void reset_game();
     void loop();
     void end();
-    void update();
+
+    void gamestate_play(double);
+    void gamestate_pause(double);
 
     // Helper functions
     double get_wall_time();
@@ -133,5 +150,6 @@ public:
     void calculate_projection();
     bool down_tick();
 };
+
 
 #endif

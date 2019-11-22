@@ -1,5 +1,49 @@
 #include <game.h>
 
+////////////
+// Render //
+////////////
+
+Relement::Relement(int x, int y, std::string str){
+    this->x = x; this->y = y; this->str = str;
+}
+
+Rvector::Rvector(){
+    full   = "\u2588\u2588";
+    shaded = "\u2593\u2593";
+    light  = "\u2591\u2591";
+    blank  = "  ";
+
+    colors.push_back("\033[37m"); // white
+    colors.push_back("\033[31m"); // red
+    colors.push_back("\033[32m"); // green
+    colors.push_back("\033[33m"); // brown
+    colors.push_back("\033[34m"); // blue
+    colors.push_back("\033[35m"); // magenta
+    colors.push_back("\033[36m"); // cyan
+}
+
+void Rvector::push_back(Relement e){
+    do { } while (atomic_flag_test_and_set(&aflag));
+    vec.push_back(e);
+    atomic_flag_clear(&aflag);
+}
+
+std::string Rvector::to_string(){
+    do { } while (atomic_flag_test_and_set(&aflag));
+    std::string tmp;
+    std::string pstring;
+    for(int i = 0; i < vec.size(); i++){
+        tmp = "\033["+std::to_string(vec[i].y)+";"+
+                      std::to_string(vec[i].x)+"H"+
+                      vec[i].str;
+        pstring.append(tmp);
+    }
+    vec.clear();
+    atomic_flag_clear(&aflag);
+    return pstring;
+}
+
 /////////////////////
 // Shapes and Coor //
 /////////////////////
@@ -26,6 +70,7 @@ bool Coor::operator==(const Coor& in){
 // Shape Class
 Shape::Shape(){
     idx = 0;
+    color = "";
     origin.x = 0; origin.y = 0;
     squares.push_back(origin);
 }
@@ -33,6 +78,7 @@ Shape::Shape(){
 Shape::Shape(const Shape &in){
     idx = in.idx;
     origin = in.origin;
+    color = in.color;
     for(auto e=in.squares.begin();e!=in.squares.end(); ++e)
         squares.push_back(*(e));
 }
@@ -64,51 +110,19 @@ void Shape::right(){
     origin.x += 1;
 }
 
-bool Shape::check_collision(std::vector<Coor> board){
+bool Shape::check_collision(std::vector<BoardSquare> board){
     for(auto eb=board.begin();eb!=board.end();++eb){
         for(auto es=squares.begin();es!=squares.end();++es){
-            if((*es + origin) == *eb)
+            if((*es + origin) == eb->coor)
                 return true;
         }
     }
     return false;
 }
 
-////////////
-// Render //
-////////////
-
-Relement::Relement(int x, int y, std::string str){
-    this->x = x; this->y = y; this->str = str;
-}
-
-Rvector::Rvector(){
-    full   = "\u2588\u2588";
-    shaded = "\u2593\u2593";
-    light  = "\u2591\u2591";
-    blank  = "  ";
-}
-
-void Rvector::push_back(Relement e){
-    do { } while (atomic_flag_test_and_set(&aflag));
-    vec.push_back(e);
-    atomic_flag_clear(&aflag);
-}
-
-std::string Rvector::to_string(){
-    do { } while (atomic_flag_test_and_set(&aflag));
-    std::string tmp;
-    std::string pstring;
-    for(int i = 0; i < vec.size(); i++){
-        tmp = "\033["+std::to_string(vec[i].y)+";"+
-                      std::to_string(vec[i].x)+"H"+
-                      vec[i].str;
-        pstring.append(tmp);
-    }
-    vec.clear();
-    atomic_flag_clear(&aflag);
-    return pstring;
-}
+BoardSquare::BoardSquare() : coor(Coor(0,0)), color("") {}
+BoardSquare::BoardSquare(Coor in) : coor(in), color("") {}
+BoardSquare::BoardSquare(Coor in, std::string in2) : coor(in), color(in2) {}
 
 ////////////////
 // Game Class //
@@ -128,26 +142,20 @@ Game::Game(unsigned int WIDTH_, unsigned int HEIGHT_){
     }
 
     // Initialize gameplay variables 
-    current      = 0;
+    current    = 0;
     projection = 0;
-    next         = 0;
-    saved        = 0;
+    next       = 0;
+    saved      = 0;
 
     create_shapes();
     reset_game();
 
     // Start game loop
     running = true; 
+    //pause = false;
+    gs = play;
     t_game = std::thread(&Game::loop, this); 
 
-    // Drawing 
-    colors.push_back("\033[37m"); // white
-    colors.push_back("\033[31m"); // red
-    colors.push_back("\033[32m"); // green
-    colors.push_back("\033[33m"); // brown
-    colors.push_back("\033[34m"); // blue
-    colors.push_back("\033[35m"); // magenta
-    colors.push_back("\033[36m"); // cyan
 
 }
 
@@ -165,7 +173,7 @@ bool Game::is_running(){
 
 void Game::input_handler(char c){
     Shape current_prev(*current);
-    if (c == 'w'){ 
+    if      (c == 'w' && gs == GAMESTATE::play){ 
         current->rotate(true);
         bool valid_rotation = !current->check_collision(board);
 
@@ -209,28 +217,28 @@ void Game::input_handler(char c){
         else
             current->rotate(false);
     }
-    else if (c == 'd'){ 
+    else if (c == 'd' && gs == GAMESTATE::play){ 
         current->right();
         if(current->check_collision(board))
             current->left();
         else
             draw_current_shape(&current_prev);
     }
-    else if (c == 'a'){
+    else if (c == 'a' && gs == GAMESTATE::play){
         current->left();
         if(current->check_collision(board))
             current->right();
         else
             draw_current_shape(&current_prev);
     }
-    else if (c == 's'){ 
+    else if (c == 's' && gs == GAMESTATE::play){ 
         current->down();
         if(current->check_collision(board))
             current->up();
         else
             draw_current_shape(&current_prev);
     }
-    else if (c == 'q'){ 
+    else if (c == 'q' && gs == GAMESTATE::play){ 
         int current_shape_idx = current->idx;
 
         Shape tmp(*current);
@@ -273,16 +281,29 @@ void Game::input_handler(char c){
         draw_saved_box();
         draw_current_shape(&tmp);
     }
-    else if (c == ' '){ 
+    else if (c == ' ' && gs == GAMESTATE::play){ 
         while(!current->check_collision(board))
             current->down();
         current->up();
         draw_current_shape(&current_prev);
     }
+    else if (c == 'p'){ 
+        if      ( gs == GAMESTATE::play ){
+            gs = GAMESTATE::pause;
+            draw_pause();
+        }
+        else if ( gs == GAMESTATE::pause ){
+            gs = GAMESTATE::play;
+            draw_board_box();
+        }
+    }
 
-    Shape projection_prev(*projection);
-    calculate_projection();
-    draw_projection_shape(&projection_prev);
+    if (gs == GAMESTATE::play){ 
+        Shape projection_prev(*projection);
+        calculate_projection();
+        draw_projection_shape(&projection_prev);
+    }
+
 }
 
 std::string Game::render(){
@@ -342,8 +363,8 @@ void Game::draw_blank_board(){
     // Border
     draw_box(1, 1, 39, 27);
 
-    std::string txt("[Esc]xit [p]ause [h]elp");
-    rvector.push_back(Relement(10, 26, txt));
+    std::string txt("[Esc]xit [p]ause/help");
+    rvector.push_back(Relement(12, 26, txt));
 }
 
 void Game::draw_next_box(){
@@ -356,6 +377,7 @@ void Game::draw_next_box(){
     //delete next;
     //next = new Shape(shapes[shape_idx]);
 
+    rvector.push_back(Relement(1, 1, next->color));
     Coor base(7,5);
     for(auto e=next->squares.begin(); e!=next->squares.end(); ++e){
         Coor c(*e + next->origin);
@@ -364,7 +386,7 @@ void Game::draw_next_box(){
         else
             rvector.push_back(Relement(c.x*2 + base.x, c.y + base.y, rvector.shaded));
     }
-    //draw_shape(next, Coor(7,5));
+    rvector.push_back(Relement(1, 1, rvector.colors[0]));
 }
 
 void Game::draw_saved_box(){
@@ -374,6 +396,7 @@ void Game::draw_saved_box(){
     if( saved == 0 )
         return;
     
+    rvector.push_back(Relement(1, 1, saved->color));
     Coor base(7,11);
     for(auto e=saved->squares.begin(); e!=saved->squares.end(); ++e){
         Coor c(*e + saved->origin);
@@ -382,6 +405,7 @@ void Game::draw_saved_box(){
         else
             rvector.push_back(Relement(c.x*2 + base.x, c.y + base.y, rvector.shaded));
     }
+    rvector.push_back(Relement(1, 1, rvector.colors[0]));
 }
 
 void Game::draw_board_box(){
@@ -396,7 +420,8 @@ void Game::draw_board_box(){
 
     // Draw board
     for(auto e=board.begin(); e!=board.end(); ++e){
-        Coor c(*e);
+        Coor c(e->coor);
+        rvector.push_back(Relement(1, 1, e->color));
         if(c.y >= 20 || c.y < 0 || c.x < 0 || c.x >= 10) // don't draw out of bounds
             continue;
         else if( (c.x + c.y) % 2 ) 
@@ -404,6 +429,36 @@ void Game::draw_board_box(){
         else
             rvector.push_back(Relement(c.x*2 + base.x, c.y + base.y, rvector.shaded));
     }
+    rvector.push_back(Relement(1, 1, rvector.colors[0]));
+}
+
+void Game::draw_pause(){
+    Coor base(17,4);
+    std::vector<std::string> tmp_str;
+
+    // Clear playing area 
+    std::string blank_row(20, ' ');
+
+    rvector.push_back(Relement(base.x, base.y+0, blank_row));
+    rvector.push_back(Relement(base.x, base.y+1, blank_row));
+
+    tmp_str.push_back("   === Pause ===    "); 
+    tmp_str.push_back("                    "); 
+    tmp_str.push_back("  [w]     - rotate  "); 
+    tmp_str.push_back("  [a]     - left    "); 
+    tmp_str.push_back("  [s]     - right   "); 
+    tmp_str.push_back("  [d]     - down    "); 
+    tmp_str.push_back("  [space] - drop    "); 
+    tmp_str.push_back("  [q]     - save    "); 
+
+    int j = 2;
+    for(auto e=tmp_str.begin();e!=tmp_str.end();++e){
+        rvector.push_back(Relement(base.x, base.y+j, *e));
+        j += 1;
+    }
+
+    for(int i = j; i < j+10; i++)
+        rvector.push_back(Relement(base.x, base.y+i, blank_row));
 }
 
 void Game::draw_current_shape(Shape* current_prev){
@@ -421,6 +476,7 @@ void Game::draw_current_shape(Shape* current_prev){
     }
 
     // Draw current shape (but not out of bounds pixels)
+    rvector.push_back(Relement(1, 1, current->color));
     for(auto e=current->squares.begin(); e!=current->squares.end(); ++e){
         Coor c(*e + current->origin);
         if(c.y >= 20 || c.y < 0) // don't draw out of bounds
@@ -430,6 +486,7 @@ void Game::draw_current_shape(Shape* current_prev){
         else
             rvector.push_back(Relement(c.x*2 + base.x, c.y + base.y, rvector.shaded));
     }
+    rvector.push_back(Relement(1, 1, rvector.colors[0]));
 }
 
 void Game::draw_projection_shape(Shape* prev){
@@ -480,15 +537,9 @@ void Game::loop(){
     double twall = get_wall_time();
     double twall_new = twall;
     double dt = 0;
-    double tick = 0;
 
     while(running){
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        // Timing
-        twall_new = get_wall_time();
-        dt = twall_new - twall;
-        twall = twall_new;
-        tick += dt;
 
         // Input handling
         while( !input_queue.empty() ){
@@ -497,15 +548,30 @@ void Game::loop(){
             input_handler(in);
         }
 
-        // Game tick 
-        if(tick > game_speed){
-            tick = 0;
-            bool landed = down_tick();
-            
-            // Losing condition
-            if(landed && current->check_collision(board)){
-                reset_game();
-            }
+        if     ( gs == GAMESTATE::pause ) {}
+        else if( gs == GAMESTATE::help  ) {}
+        else if( gs == GAMESTATE::begin ) {}
+        else if( gs == GAMESTATE::play)
+            gamestate_play(dt);
+        
+        // Timing
+        twall_new = get_wall_time();
+        dt = twall_new - twall;
+        twall = twall_new;
+    }
+}
+
+void Game::gamestate_play(double dt){
+    tick += dt;
+
+    // Game tick 
+    if(tick > game_speed){
+        tick = 0;
+        bool landed = down_tick();
+        
+        // Losing condition
+        if(landed && current->check_collision(board)){
+            reset_game();
         }
     }
 }
@@ -578,6 +644,7 @@ void Game::create_shapes(){
     shapes[1].squares.push_back(Coor( 1, 0));
     shapes[1].squares.push_back(Coor( 2, 0));
     shapes[1].idx = 1;
+    //shapes[1].color = rvector.colors[1];
 
     // T-shape
     shapes.push_back(Shape());                 // ▓▓  
@@ -585,6 +652,7 @@ void Game::create_shapes(){
     shapes[2].squares.push_back(Coor( 0, 1));  // ▓▓  
     shapes[2].squares.push_back(Coor( 1, 0));
     shapes[2].idx = 2;
+    //shapes[2].color = rvector.colors[2];
 
     // L-shape
     shapes.push_back(Shape());                // ▓▓  
@@ -592,6 +660,7 @@ void Game::create_shapes(){
     shapes[3].squares.push_back(Coor( 0, 1)); // ▓▓██
     shapes[3].squares.push_back(Coor( 1, 1));
     shapes[3].idx = 3;
+    //shapes[3].color = rvector.colors[3];
 
     // Li-shape                                  
     shapes.push_back(Shape());                 // ▓▓██
@@ -599,6 +668,7 @@ void Game::create_shapes(){
     shapes[4].squares.push_back(Coor( 0, 1));  // ▓▓  
     shapes[4].squares.push_back(Coor( 1,-1));
     shapes[4].idx = 4;
+    //shapes[4].color = rvector.colors[4];
 
     // S-shape                                  
     shapes.push_back(Shape());                 //   ██
@@ -606,6 +676,7 @@ void Game::create_shapes(){
     shapes[5].squares.push_back(Coor( 0, 1));  // ▓▓  
     shapes[5].squares.push_back(Coor( 1,-1));
     shapes[5].idx = 5;
+    //shapes[5].color = rvector.colors[5];
 
     // Si-shape                                  
     shapes.push_back(Shape());                 // ▓▓  
@@ -613,7 +684,17 @@ void Game::create_shapes(){
     shapes[6].squares.push_back(Coor( 1, 0));  //   ██
     shapes[6].squares.push_back(Coor( 1, 1));
     shapes[6].idx = 6;
+    //shapes[6].color = rvector.colors[6];
 
+
+    // Set colors
+    shapes[0].color = "\033[38;2;255;204;0m";   // square (yellow)
+    shapes[1].color = "\033[38;2;0;205;255m";   // line   (teal)
+    shapes[2].color = "\033[38;2;204;0;255m";   // t      (purple)
+    shapes[3].color = "\033[38;2;255;102;2m";   // l      (orange)
+    shapes[4].color = "\033[38;2;51;51;204m";   // li     (blue)
+    shapes[5].color = "\033[38;2;255;0;0m";     // s      (red)
+    shapes[6].color = "\033[38;2;0;204;0m";     // si     (green)
 
     // Index vector for picking the next shape 
     shape_idx = 0;
@@ -625,12 +706,13 @@ void Game::create_shapes(){
 void Game::reset_board(){
     board.clear();
 
-    for(int i=0; i < 10; i++) 
-        board.push_back(Coor(i, 20));
+    for(int i=0; i < 10; i++)
+        board.push_back(BoardSquare(Coor(i, 20)));
+    
 
     for(int i=0; i < 20; i++) {
-        board.push_back(Coor(-1, i));
-        board.push_back(Coor(10, i));
+        board.push_back(BoardSquare(Coor(-1, i)));
+        board.push_back(BoardSquare(Coor(10, i)));
     }
 }
 
@@ -641,8 +723,8 @@ int Game::erase_full_rows(){
 
     for(auto e=board.begin();e!=board.end();++e){
         // Don't consider board border
-        if(e->x >= 0 && e->x < 10 && e->y < 20)
-            rows[e->y] += 1;
+        if(e->coor.x >= 0 && e->coor.x < 10 && e->coor.y < 20)
+            rows[e->coor.y] += 1;
     }
 
     // Delete all squares in full rows
@@ -653,7 +735,7 @@ int Game::erase_full_rows(){
             // Remove row
             auto e = board.begin();
             while(e != board.end()){
-                if((e->x >= 0 && e->x < 10 && e->y < 20) && e->y == i)
+                if((e->coor.x >= 0 && e->coor.x < 10 && e->coor.y < 20) && e->coor.y == i)
                     board.erase(e);
                 else
                     ++e;
@@ -666,8 +748,8 @@ int Game::erase_full_rows(){
         if(rows[i] == 10){
             for(auto e=board.begin();e!=board.end();++e){
                 // Don't consider board border
-                if((e->x >= 0 && e->x < 10 && e->y < 20) && e->y < i)
-                    e->y += 1;
+                if((e->coor.x >= 0 && e->coor.x < 10 && e->coor.y < 20) && e->coor.y < i)
+                    e->coor.y += 1;
             }
         }
     }
@@ -718,7 +800,7 @@ bool Game::down_tick(){
 
         // Add current shape squares to board
         for(auto e=current->squares.begin();e!=current->squares.end();++e)
-            board.push_back(Coor(*e + current->origin));
+            board.push_back(BoardSquare(Coor(*e + current->origin), current->color));
 
         // Remove full rows
         int count = erase_full_rows();
